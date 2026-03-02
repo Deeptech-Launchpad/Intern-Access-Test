@@ -1,0 +1,77 @@
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from database import engine, SessionLocal
+import models
+import auth
+from routes import admin as admin_router
+from routes import candidate as candidate_router
+
+# Create all tables
+models.Base.metadata.create_all(bind=engine)
+
+
+def seed_admin():
+    """Seed a default admin account if none exists."""
+    db = SessionLocal()
+    try:
+        existing = db.query(models.Admin).filter(models.Admin.username == "admin").first()
+        if not existing:
+            hashed = auth.get_password_hash("admin123")
+            db.add(models.Admin(username="admin", hashed_password=hashed))
+            db.commit()
+            print("[OK] Default admin created: admin / admin123")
+        else:
+            print("[INFO] Admin account already exists")
+    except Exception as e:
+        print(f"[ERROR] Seeding admin failed: {e}")
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    seed_admin()
+    yield
+    # Shutdown (nothing needed)
+
+
+app = FastAPI(
+    title="Internship Assessment Portal API",
+    description="Backend API for MCQ-based internship assessments",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+import os
+
+# CORS — allow frontend
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://[::1]:5173",
+]
+if os.getenv("FRONTEND_URL"):
+    origins.append(os.getenv("FRONTEND_URL"))
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Routers
+app.include_router(admin_router.router)
+app.include_router(candidate_router.router)
+
+
+@app.get("/")
+def root():
+    return {"message": "Internship Assessment Portal API is running"}

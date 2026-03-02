@@ -1,0 +1,4 @@
+/* Reset App.css completely — styles handled by index.css */
+#root {
+  height: 100%;
+}
