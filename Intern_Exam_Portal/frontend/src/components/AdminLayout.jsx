@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, PlusCircle, Link2, BarChart3, LogOut } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, Link2, BarChart3, LogOut, Users, UserCog } from 'lucide-react';
 import './AdminLayout.css';
 
 const navItems = [
@@ -8,6 +8,8 @@ const navItems = [
     { to: '/admin/create-assessment', icon: <PlusCircle size={18} />, label: 'Create Assessment' },
     { to: '/admin/generate', icon: <Link2 size={18} />, label: 'Generate Link' },
     { to: '/admin/grades', icon: <BarChart3 size={18} />, label: 'Grading Dashboard' },
+    { to: '/admin/bulk-invite', icon: <Users size={18} />, label: 'Bulk Invite' },
+    { to: '/admin/manage-admins', icon: <UserCog size={18} />, label: 'Manage Admins' },
 ];
 
 export default function AdminLayout({ children }) {

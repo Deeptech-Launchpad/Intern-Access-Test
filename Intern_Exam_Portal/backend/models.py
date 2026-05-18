@@ -11,7 +11,10 @@ class Admin(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    is_active = Column(Boolean, default=True)  # False = locked out
+    is_active = Column(Boolean, default=True)
+    email = Column(String, nullable=True)
+
+    assessments = relationship("Assessment", back_populates="created_by_admin")
 
 
 class Assessment(Base):
@@ -19,13 +22,18 @@ class Assessment(Base):
     __tablename__ = "assessments"
 
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, nullable=False)          # e.g. "Q1 2025 Intern Round"
-    job_position = Column(String, nullable=False)   # e.g. "Software Developer"
-    experience_level = Column(String, nullable=False, default="fresher")  # 'fresher' | 'experienced'
+    title = Column(String, nullable=False)
+    job_position = Column(String, nullable=False)
+    experience_level = Column(String, nullable=False, default="fresher")
+    duration_minutes = Column(Integer, nullable=False, default=60)
     created_at = Column(DateTime, default=datetime.utcnow)
+    created_by_id = Column(Integer, ForeignKey("admins.id"), nullable=True)
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
 
     mcqs = relationship("MCQ", back_populates="assessment")
     candidates = relationship("Candidate", back_populates="assessment")
+    created_by_admin = relationship("Admin", back_populates="assessments")
 
 
 class MCQ(Base):
@@ -33,13 +41,15 @@ class MCQ(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     assessment_id = Column(Integer, ForeignKey("assessments.id"), nullable=True, index=True)
-    set_name = Column(String, nullable=False, default="Default Set")  # question set name within an assessment
+    set_name = Column(String, nullable=False, default="Default Set")
+    question_type = Column(String, nullable=False, default="mcq")   # 'mcq' | 'descriptive'
     question = Column(Text, nullable=False)
-    option_a = Column(String, nullable=False)
-    option_b = Column(String, nullable=False)
-    option_c = Column(String, nullable=False)
-    option_d = Column(String, nullable=False)
-    correct_answer = Column(String, nullable=False)  # 'a', 'b', 'c', or 'd'
+    option_a = Column(String, nullable=True)
+    option_b = Column(String, nullable=True)
+    option_c = Column(String, nullable=True)
+    option_d = Column(String, nullable=True)
+    correct_answer = Column(String, nullable=True)                   # None for descriptive
+    question_mark = Column(Integer, nullable=True, default=None)     # 2, 5, or 10 for descriptive
     created_at = Column(DateTime, default=datetime.utcnow)
 
     assessment = relationship("Assessment", back_populates="mcqs")
@@ -55,12 +65,16 @@ class Candidate(Base):
     test_token = Column(String, unique=True, index=True)
     token_expiry = Column(DateTime, nullable=False)
     assessment_id = Column(Integer, ForeignKey("assessments.id"), nullable=True, index=True)
-    mcq_set_name = Column(String, nullable=True)  # which question set they are assigned
+    mcq_set_name = Column(String, nullable=True)
     years_experience = Column(Integer, nullable=True, default=0)
+    require_camera = Column(Boolean, default=False)
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     assessment = relationship("Assessment", back_populates="candidates")
     session = relationship("TestSession", back_populates="candidate", uselist=False)
+    snapshots = relationship("WebcamSnapshot", back_populates="candidate")
 
 
 class TestSession(Base):
@@ -73,9 +87,11 @@ class TestSession(Base):
     score = Column(Integer, nullable=True)
     total = Column(Integer, nullable=True)
     tab_switches = Column(Integer, default=0)
-    question_order = Column(Text, nullable=True)  # JSON list of MCQ IDs
+    question_order = Column(Text, nullable=True)
     is_submitted = Column(Boolean, default=False)
-    tab_switch_log = Column(Text, nullable=True)  # JSON list of {time, count} events
+    tab_switch_log = Column(Text, nullable=True)
+    # descriptive grading status: 'pending_review' | 'reviewed'
+    descriptive_status = Column(String, nullable=True, default=None)
 
     candidate = relationship("Candidate", back_populates="session")
     answers = relationship("Answer", back_populates="session")
@@ -87,7 +103,21 @@ class Answer(Base):
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("test_sessions.id"))
     mcq_id = Column(Integer, ForeignKey("mcqs.id"))
-    selected_option = Column(String, nullable=True)  # 'a', 'b', 'c', 'd' or None
+    selected_option = Column(String, nullable=True)          # 'a'/'b'/'c'/'d' for MCQ
+    descriptive_answer = Column(Text, nullable=True)         # typed text for descriptive
+    awarded_marks = Column(Integer, nullable=True, default=None)  # admin-awarded marks
 
     session = relationship("TestSession", back_populates="answers")
     mcq = relationship("MCQ", back_populates="answers")
+
+
+class WebcamSnapshot(Base):
+    __tablename__ = "webcam_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    candidate_id = Column(Integer, ForeignKey("candidates.id"), nullable=False, index=True)
+    tab_switch_count = Column(Integer, nullable=False)
+    image_b64 = Column(Text, nullable=False)
+    captured_at = Column(DateTime, default=datetime.utcnow)
+
+    candidate = relationship("Candidate", back_populates="snapshots")

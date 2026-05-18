@@ -306,3 +306,276 @@
     font-size: 13px;
     color: var(--text-muted);
 }
+/* ─── Timer variants ─────────────────────── */
+.timer {
+    display: flex;
+    align-items: center;
+    font-size: 20px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    letter-spacing: 1px;
+    transition: color 0.3s;
+}
+.timer-warning { color: #d97706; }
+.timer-danger  { color: #dc2626; animation: pulse-red 1s ease-in-out infinite; }
+
+@keyframes pulse-red {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.6; }
+}
+
+/* ─── Flag button ────────────────────────── */
+.question-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.flag-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+.flag-btn:hover {
+    border-color: #d97706;
+    color: #d97706;
+    background: #fefce8;
+}
+.flag-btn-active {
+    border-color: #d97706;
+    background: #fefce8;
+    color: #d97706;
+}
+
+/* ─── Flagged grid cell ──────────────────── */
+.grid-cell { position: relative; }
+
+.grid-cell.flagged {
+    border-color: #d97706;
+    color: #d97706;
+}
+.grid-cell.flagged.answered {
+    background: #10b981;
+    border-color: #d97706;
+    color: #fff;
+}
+.flag-dot {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #d97706;
+}
+.flagged-dot {
+    background: #fde68a;
+    border: 1.5px solid #d97706;
+}
+
+/* ─── Submit Modal ───────────────────────── */
+.sm-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+}
+.sm-modal {
+    background: #fff;
+    border-radius: 16px;
+    padding: 32px;
+    width: 440px;
+    max-width: 95vw;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.2);
+}
+.sm-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 800;
+    margin-bottom: 6px;
+    color: var(--text);
+}
+.sm-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 24px;
+}
+.sm-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.sm-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    text-align: center;
+}
+.sm-stat span { font-size: 22px; font-weight: 800; display: block; }
+.sm-stat small { font-size: 11px; font-weight: 600; opacity: 0.75; display: block; }
+.sm-stat-green  { background: #f0fdf4; color: #15803d; }
+.sm-stat-red    { background: #fef2f2; color: #dc2626; }
+.sm-stat-amber  { background: #fefce8; color: #d97706; }
+.sm-stat-gray   { background: #f8fafc; color: #64748b; }
+.sm-warning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #dc2626;
+    margin-bottom: 20px;
+}
+.sm-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fefce8;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #d97706;
+    margin-bottom: 20px;
+}
+.sm-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* ── Fullscreen prompt overlay ── */
+.fs-prompt-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+}
+.fs-prompt-card {
+    background: var(--card-bg, #fff);
+    border-radius: 16px;
+    padding: 40px 36px;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.3);
+}
+.fs-prompt-card h3 { font-size: 20px; font-weight: 800; margin-bottom: 10px; color: var(--text); }
+.fs-prompt-card p  { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+
+/* ── Mobile device block (in test page) ── */
+.device-block {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #0f172a;
+    color: #fff;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+    text-align: center;
+    gap: 12px;
+}
+@media (max-width: 1023px) {
+    .device-block { display: flex; }
+}
+
+/* ── Descriptive question styles ──────────────────────────────────────────── */
+.descriptive-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.descriptive-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: #1e40af;
+    line-height: 1.5;
+}
+
+.descriptive-info svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.descriptive-textarea {
+    width: 100%;
+    min-height: 220px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-family: inherit;
+    line-height: 1.7;
+    color: var(--text);
+    background: var(--surface);
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.descriptive-textarea:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.descriptive-textarea::placeholder {
+    color: var(--text-muted);
+}
+
+.descriptive-char-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: right;
+}
+
+/* Descriptive dot in sidebar */
+.desc-dot {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #3b82f6;
+}

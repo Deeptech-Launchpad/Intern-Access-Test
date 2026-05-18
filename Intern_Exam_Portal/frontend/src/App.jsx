@@ -10,6 +10,7 @@ import GenerateLink from './pages/admin/GenerateLink';
 import GradingDashboard from './pages/admin/GradingDashboard';
 import CandidateDetail from './pages/admin/CandidateDetail';
 import ManageAdmins from './pages/admin/ManageAdmins';
+import BulkInvite from './pages/admin/BulkInvite';
 import CreateAssessment from './pages/admin/CreateAssessment';
 
 // Candidate pages
@@ -42,6 +43,7 @@ function App() {
         <Route path="/admin/grades" element={<AdminGuard><GradingDashboard /></AdminGuard>} />
         <Route path="/admin/candidate/:id" element={<AdminGuard><CandidateDetail /></AdminGuard>} />
         <Route path="/admin/manage-admins" element={<AdminGuard><ManageAdmins /></AdminGuard>} />
+        <Route path="/admin/bulk-invite" element={<AdminGuard><BulkInvite /></AdminGuard>} />
 
         {/* Candidate routes */}
         <Route path="/test/:token" element={<TestLanding />} />

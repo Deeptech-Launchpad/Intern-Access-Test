@@ -130,3 +130,84 @@
     color: var(--text-muted);
     line-height: 1.6;
 }
+/* ── Mobile block improvements ── */
+.device-block {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #0f172a;
+    color: #fff;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 32px;
+    text-align: center;
+}
+
+@media (max-width: 1023px) {
+    .device-block { display: flex; }
+}
+
+.device-block-icon {
+    background: rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 24px;
+    animation: pulse-icon 2s ease-in-out infinite;
+}
+
+@keyframes pulse-icon {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%       { transform: scale(1.06); opacity: 0.85; }
+}
+
+.device-block h2 { font-size: 22px; font-weight: 800; margin-bottom: 10px; }
+.device-block > p { font-size: 14px; color: rgba(255,255,255,0.7); margin-bottom: 20px; max-width: 360px; }
+
+.device-width-indicator { width: 100%; max-width: 340px; margin-bottom: 16px; }
+.device-width-bar {
+    height: 8px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+.device-width-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ef4444, #f97316);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+.device-width-label { font-size: 13px; color: rgba(255,255,255,0.6); }
+
+.device-hint { font-size: 13px; color: rgba(255,255,255,0.5); max-width: 340px; }
+
+/* ── Camera gate ── */
+.camera-gate {
+    text-align: center;
+    padding: 40px 36px;
+}
+.camera-gate-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    background: var(--primary-ghost);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+}
+.camera-gate h2 { font-size: 20px; font-weight: 800; margin-bottom: 10px; }
+
+.alert-danger {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #991b1b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+}

@@ -1,0 +1,41 @@
+# ── Secrets — NEVER commit these ────────────────────────────────────────
+**/.env
+**/.env.local
+**/.env.live
+**/.env.development
+# Allow non-secret Vite conventions
+!**/.env.production
+!**/.env.example
+
+# ── Python ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+env/
+.venv/
+
+# ── SQLite leftovers (project uses Postgres) ────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Node / frontend ─────────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+*.log
+
+# ── Editor / OS ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ── Build artefacts ─────────────────────────────────────────────────────
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/

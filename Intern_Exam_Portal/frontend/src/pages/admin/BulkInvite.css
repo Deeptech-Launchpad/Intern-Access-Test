@@ -1,0 +1,182 @@
+.bi-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+.bi-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--text);
+}
+
+.bi-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.bi-select {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    box-sizing: border-box;
+}
+.bi-select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* Drop zone */
+.bi-drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 32px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+.bi-drop-zone:hover,
+.bi-drop-zone.drag-over {
+    border-color: var(--primary);
+    background: var(--primary-ghost);
+}
+.bi-drop-zone.has-file {
+    border-color: #10b981;
+    background: #f0fdf4;
+    border-style: solid;
+}
+
+.bi-drop-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+}
+.bi-drop-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0;
+}
+.bi-drop-sub code {
+    background: var(--surface);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+/* Format table */
+.bi-format-table {
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    font-size: 13px;
+}
+.bi-format-head {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--bg);
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+.bi-format-head span,
+.bi-format-row span {
+    padding: 8px 12px;
+    border-right: 1px solid var(--border);
+}
+.bi-format-head span:last-child,
+.bi-format-row span:last-child { border-right: none; }
+.bi-format-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 1px solid var(--border);
+    color: var(--text);
+}
+
+/* Results */
+.bi-results-summary {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.bi-result-stat {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    flex: 1;
+}
+.bi-result-stat div { display: flex; flex-direction: column; }
+.bi-result-stat span { font-size: 22px; font-weight: 800; line-height: 1; }
+.bi-result-stat small { font-size: 11px; font-weight: 600; opacity: 0.7; margin-top: 2px; }
+.bi-stat-green { background: #f0fdf4; color: #15803d; }
+.bi-stat-red   { background: #fef2f2; color: #dc2626; }
+
+.bi-result-list { display: flex; flex-direction: column; gap: 6px; }
+
+.bi-result-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.bi-result-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    gap: 10px;
+}
+.bi-result-row div { display: flex; flex-direction: column; }
+.bi-result-row strong { font-weight: 600; color: var(--text); }
+.bi-result-row span  { font-size: 12px; color: var(--text-muted); }
+.bi-row-success { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.bi-row-error   { background: #fef2f2; border: 1px solid #fecaca; }
+
+.bi-row-tag {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 99px;
+    background: #bbf7d0;
+    color: #15803d;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.bi-tag-error {
+    background: #fecaca;
+    color: #dc2626;
+}

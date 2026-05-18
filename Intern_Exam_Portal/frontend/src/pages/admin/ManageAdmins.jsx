@@ -9,6 +9,7 @@ export default function ManageAdmins() {
     const [admins, setAdmins] = useState([]);
     const [loading, setLoading] = useState(true);
     const [username, setUsername] = useState('');
+    const [email,    setEmail]    = useState('');
     const [password, setPassword] = useState('');
     const [showPw, setShowPw] = useState(false);
     const [creating, setCreating] = useState(false);
@@ -37,11 +38,18 @@ export default function ManageAdmins() {
     const handleCreate = async (e) => {
         e.preventDefault();
         if (!username.trim() || !password.trim()) { toast.error('Username and password are required'); return; }
+        if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+            toast.error('Please enter a valid email address'); return;
+        }
         setCreating(true);
         try {
-            const res = await API.post('/admin/create-admin', { username: username.trim(), password });
+            const res = await API.post('/admin/create-admin', {
+                username: username.trim(),
+                password,
+                email: email.trim() || null,
+            });
             toast.success(`Admin "${res.data.username}" created!`);
-            setUsername(''); setPassword('');
+            setUsername(''); setPassword(''); setEmail('');
             fetchAdmins();
         } catch (err) {
             toast.error(err.response?.data?.detail || 'Failed to create admin');
@@ -92,6 +100,11 @@ export default function ManageAdmins() {
                             value={username} onChange={e => setUsername(e.target.value)} autoComplete="off" />
                     </div>
                     <div className="ma-field">
+                        <label>Email <span className="ma-hint">(for assessment completion notifications)</span></label>
+                        <input type="email" placeholder="e.g. admin@company.com"
+                            value={email} onChange={e => setEmail(e.target.value)} autoComplete="off" />
+                    </div>
+                    <div className="ma-field">
                         <label>Password <span className="ma-hint">(min 6 characters)</span></label>
                         <div className="ma-pw-wrap">
                             <input type={showPw ? 'text' : 'password'} placeholder="Enter a strong password"
@@ -127,11 +140,18 @@ export default function ManageAdmins() {
                                 <li key={admin.id} className={`ma-admin-row ${!isActive ? 'ma-inactive-row' : ''}`}>
                                     <div className="ma-admin-info">
                                         <ShieldCheck size={16} color={isSelf ? 'var(--primary)' : isActive ? '#6b7280' : '#d1d5db'} />
-                                        <span className="ma-admin-name" style={{ color: !isActive ? 'var(--text-muted)' : undefined }}>
-                                            {admin.username}
-                                            {isSelf && <span className="ma-you-badge">You</span>}
-                                            {!isActive && <span className="ma-inactive-badge">Inactive</span>}
-                                        </span>
+                                        <div>
+                                            <span className="ma-admin-name" style={{ color: !isActive ? 'var(--text-muted)' : undefined }}>
+                                                {admin.username}
+                                                {isSelf && <span className="ma-you-badge">You</span>}
+                                                {!isActive && <span className="ma-inactive-badge">Inactive</span>}
+                                            </span>
+                                            {admin.email && (
+                                                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 2 }}>
+                                                    {admin.email}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="ma-admin-actions">
                                         {/* Active / Inactive toggle */}

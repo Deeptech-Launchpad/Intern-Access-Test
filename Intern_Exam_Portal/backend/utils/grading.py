@@ -8,22 +8,57 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def calculate_score(session: models.TestSession) -> tuple[int, int]:
-    """Calculate score: (correct_count, total_questions_in_session)."""
+    """
+    Calculate score for MCQ questions only (auto-graded).
+    Descriptive questions are graded manually by admin.
+    Returns (mcq_correct_count, total_mcq_questions_in_session).
+    """
     correct = 0
-    total = len(json.loads(session.question_order or "[]"))  # total = questions assigned, not just answered
+    question_order = json.loads(session.question_order or "[]")
+    total_mcq = 0
     for answer in session.answers:
-        if answer.selected_option and answer.selected_option.lower() == answer.mcq.correct_answer.lower():
-            correct += 1
-    return correct, total
+        if answer.mcq and answer.mcq.question_type == "mcq":
+            total_mcq += 1
+            if (answer.selected_option and
+                    answer.selected_option.lower() == answer.mcq.correct_answer.lower()):
+                correct += 1
+    return correct, total_mcq
+
+
+def calculate_total_score(session: models.TestSession) -> tuple[int, int]:
+    """
+    Calculate final score combining MCQ auto-grade + admin-awarded descriptive marks.
+    Returns (total_earned, total_possible).
+    total_possible = total MCQ questions + sum of all descriptive question_marks.
+    """
+    mcq_score, mcq_total = calculate_score(session)
+
+    descriptive_earned = 0
+    descriptive_possible = 0
+    for answer in session.answers:
+        if answer.mcq and answer.mcq.question_type == "descriptive":
+            descriptive_possible += (answer.mcq.question_mark or 0)
+            if answer.awarded_marks is not None:
+                descriptive_earned += answer.awarded_marks
+
+    total_earned = mcq_score + descriptive_earned
+    total_possible = mcq_total + descriptive_possible
+    return total_earned, total_possible
+
+
+def has_descriptive_questions(session: models.TestSession) -> bool:
+    return any(
+        a.mcq and a.mcq.question_type == "descriptive"
+        for a in session.answers
+    )
 
 
 def grade_and_rank_candidates(db: Session) -> List[dict]:
     """
     Returns all candidates with scores, ranks, statuses.
-    Status logic:
-    - Submitted: test completed
-    - Not Attended: link expired, no session started
-    - Pending: session exists but not submitted
+    Ranks are assigned per-assessment.
+    For candidates with descriptive questions, score reflects
+    MCQ marks only until admin reviews; after review it includes descriptive marks.
     """
     now_utc = datetime.utcnow()
 
@@ -33,44 +68,63 @@ def grade_and_rank_candidates(db: Session) -> List[dict]:
         .all()
     )
 
-    ranked = []
+    by_assessment: dict[int, list] = {}
     for sess in sessions:
         candidate = sess.candidate
         assessment = candidate.assessment
         exp_level = assessment.experience_level if assessment else "fresher"
-        percentage = round((sess.score / sess.total) * 100, 2) if sess.total and sess.total > 0 else 0.0
-        # Parse tab switch log
+
+        has_desc = has_descriptive_questions(sess)
+        desc_status = sess.descriptive_status  # None / 'pending_review' / 'reviewed'
+
+        # Use combined score if reviewed, else MCQ-only score
+        if has_desc and desc_status == "reviewed":
+            earned, possible = calculate_total_score(sess)
+        else:
+            earned, possible = calculate_score(sess)
+            # For display: total = total MCQ only (descriptive pending)
+
+        percentage = round((earned / possible) * 100, 2) if possible and possible > 0 else 0.0
+
         tab_log = []
         if sess.tab_switch_log:
             try:
                 tab_log = json.loads(sess.tab_switch_log)
             except Exception:
                 pass
-        ranked.append({
+
+        assessment_id = candidate.assessment_id or 0
+        entry = {
             "id": candidate.id,
             "name": candidate.name,
             "email": candidate.email,
-            "score": sess.score,
-            "total": sess.total,
+            "score": earned,
+            "total": possible,
             "percentage": percentage,
             "tab_switches": sess.tab_switches,
             "tab_switch_log": tab_log,
             "tab_switch_flagged": sess.tab_switches > 0,
             "is_submitted": True,
             "status": "submitted",
+            "started_at": sess.started_at,
             "submitted_at": sess.submitted_at,
             "job_position": assessment.job_position if assessment else None,
             "assessment_title": assessment.title if assessment else None,
             "experience_level": exp_level,
             "rank": None,
-        })
+            "has_descriptive": has_desc,
+            "descriptive_status": desc_status,
+        }
+        by_assessment.setdefault(assessment_id, []).append(entry)
 
-    # Sort by percentage descending, assign ranks
-    ranked.sort(key=lambda x: x["percentage"], reverse=True)
-    for i, item in enumerate(ranked):
-        item["rank"] = i + 1
+    ranked = []
+    for assessment_id, entries in by_assessment.items():
+        entries.sort(key=lambda x: x["percentage"], reverse=True)
+        for i, item in enumerate(entries):
+            item["rank"] = i + 1
+        ranked.extend(entries)
 
-    # Add unsubmitted / not-attended candidates
+    # Unsubmitted / not-attended
     all_candidates = db.query(models.Candidate).all()
     submitted_ids = {r["id"] for r in ranked}
 
@@ -111,11 +165,14 @@ def grade_and_rank_candidates(db: Session) -> List[dict]:
             "tab_switch_flagged": tab_switches > 0,
             "is_submitted": False,
             "status": status,
+            "started_at": None,
             "submitted_at": None,
             "rank": None,
             "job_position": assessment.job_position if assessment else None,
             "assessment_title": assessment.title if assessment else None,
             "experience_level": exp_level,
+            "has_descriptive": False,
+            "descriptive_status": None,
         })
 
     return ranked

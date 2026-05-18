@@ -1,36 +1,191 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, XCircle, AlertTriangle, Minus } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, AlertTriangle, Minus, Camera, FileText, Mail, Star } from 'lucide-react';
+import toast from 'react-hot-toast';
 import AdminLayout from '../../components/AdminLayout';
 import API from '../../api';
 import './CandidateDetail.css';
+
+const ZOOM_STEP = 0.15;
+const ZOOM_MIN  = 0.5;
+const ZOOM_MAX  = 4;
+
+function LightboxViewer({ src, label, onClose }) {
+    const [scale, setScale] = useState(1);
+
+    const adjustZoom = React.useCallback((delta) => {
+        setScale(s => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, parseFloat((s + delta).toFixed(2)))));
+    }, []);
+
+    // Scroll wheel zoom
+    useEffect(() => {
+        const onWheel = (e) => {
+            e.preventDefault();
+            adjustZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
+        };
+        window.addEventListener('wheel', onWheel, { passive: false });
+        return () => window.removeEventListener('wheel', onWheel);
+    }, [adjustZoom]);
+
+    // Arrow key zoom
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key === 'ArrowUp'   || e.key === '+') { e.preventDefault(); adjustZoom(ZOOM_STEP); }
+            if (e.key === 'ArrowDown' || e.key === '-') { e.preventDefault(); adjustZoom(-ZOOM_STEP); }
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [adjustZoom, onClose]);
+
+    const pct = Math.round(scale * 100);
+
+    return (
+        <div
+            onClick={onClose}
+            style={{
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)',
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', zIndex: 99999, overflow: 'auto',
+            }}
+        >
+            <img
+                src={src}
+                alt={label}
+                onClick={e => e.stopPropagation()}
+                style={{
+                    transform: `scale(${scale})`,
+                    transformOrigin: 'center center',
+                    borderRadius: 10,
+                    boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+                    display: 'block',
+                    maxWidth: '90vw',
+                    maxHeight: '80vh',
+                    cursor: 'default',
+                    transition: 'transform 0.15s ease',
+                    margin: scale > 1 ? `${(scale - 1) * 40}vh ${(scale - 1) * 40}vw` : '0',
+                }}
+            />
+            <div style={{ color: '#fff', fontSize: 13, marginTop: 20, opacity: 0.85, flexShrink: 0 }}>{label}</div>
+            <div style={{ color: '#aaa', fontSize: 12, marginTop: 6, marginBottom: 16, flexShrink: 0 }}>
+                Scroll or ↑ ↓ arrow keys to zoom · {pct}% · Click outside or Esc to close
+            </div>
+        </div>
+    );
+}
 
 export default function CandidateDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [awardedMarks, setAwardedMarks] = useState({});
+    const [savingMarks, setSavingMarks] = useState({});
+    const [finalizing, setFinalizing] = useState(false);
+    const [sendingEmail, setSendingEmail] = useState(false);
+    const [emailSentStatus, setEmailSentStatus] = useState(() => {
+        return localStorage.getItem('result_decision_' + id) || null;
+    });
+    const [lightbox, setLightbox] = useState(null); // { src, label }
 
-    useEffect(() => {
-        API.get(`/admin/candidate/${id}`)
-            .then(r => setData(r.data))
+    const reload = () => {
+        setLoading(true);
+        API.get('/admin/candidate/' + id)
+            .then(r => {
+                setData(r.data);
+                const init = {};
+                (r.data.answers || []).forEach(ans => {
+                    if (ans.question_type === 'descriptive' && ans.awarded_marks !== null && ans.awarded_marks !== undefined) {
+                        init[ans.id] = ans.awarded_marks;
+                    }
+                });
+                setAwardedMarks(init);
+            })
             .catch(console.error)
             .finally(() => setLoading(false));
-    }, [id]);
+    };
+
+    useEffect(() => { reload(); }, [id]);
 
     if (loading) return <AdminLayout><div className="loading-center"><div className="spinner" /></div></AdminLayout>;
     if (!data) return <AdminLayout><p>Not found.</p></AdminLayout>;
-
-    const optionLabel = (opt) => opt ? opt.toUpperCase() : null;
 
     const getOptionText = (ans, opt) => {
         const map = { a: ans.option_a, b: ans.option_b, c: ans.option_c, d: ans.option_d };
         return map[opt] || '—';
     };
+    const fmtTime = (iso) => {
+        if (!iso) return '—';
+        const utcStr = iso.endsWith('Z') ? iso : iso + 'Z';
+        return new Date(utcStr).toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            day: '2-digit', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: true,
+        }) + ' IST';
+    };
+
+    const descriptiveAnswers = (data.answers || []).filter(a => a.question_type === 'descriptive');
+    const allMarksAwarded = descriptiveAnswers.length > 0 &&
+        descriptiveAnswers.every(a => awardedMarks[a.id] !== undefined && awardedMarks[a.id] !== '');
+
+    const handleAwardMark = async (answerId, maxMark) => {
+        const val = parseInt(awardedMarks[answerId], 10);
+        if (isNaN(val) || val < 0 || val > maxMark) {
+            toast.error('Marks must be between 0 and ' + maxMark);
+            return;
+        }
+        setSavingMarks(prev => ({ ...prev, [answerId]: true }));
+        try {
+            await API.post('/admin/award-marks', { answer_id: answerId, awarded_marks: val });
+            toast.success('Marks saved');
+        } catch (e) {
+            toast.error((e.response && e.response.data && e.response.data.detail) || 'Failed to save marks');
+        } finally {
+            setSavingMarks(prev => ({ ...prev, [answerId]: false }));
+        }
+    };
+
+    const handleFinalizeReview = async () => {
+        setFinalizing(true);
+        try {
+            const res = await API.post('/admin/finalize-descriptive-by-candidate/' + id);
+            toast.success(
+                'Review finalized! Final score: ' + res.data.score + '/' + res.data.total +
+                ' (' + res.data.percentage + '%)'
+            );
+            reload();
+        } catch (e) {
+            toast.error((e.response && e.response.data && e.response.data.detail) || 'Failed to finalize review');
+        } finally {
+            setFinalizing(false);
+        }
+    };
+
+    const handleSendEmail = async (decision) => {
+        setSendingEmail(true);
+        try {
+            await API.post('/admin/send-result-email', {
+                candidate_id: parseInt(id),
+                decision: decision,
+            });
+            const label = decision === 'selected' ? 'Selected' : 'Rejected';
+            toast.success(label + ' email sent to ' + data.email);
+            setEmailSentStatus(decision);
+            localStorage.setItem('result_decision_' + id, decision);
+        } catch (e) {
+            toast.error((e.response && e.response.data && e.response.data.detail) || 'Failed to send email');
+        } finally {
+            setSendingEmail(false);
+        }
+    };
+
+    const isPendingReview = data.descriptive_status === 'pending_review';
+    const isReviewed      = data.descriptive_status === 'reviewed';
 
     return (
         <AdminLayout>
-            {/* Header */}
             <div className="page-header">
                 <button className="btn btn-ghost btn-sm" onClick={() => navigate('/admin/grades')} style={{ marginBottom: 12 }}>
                     <ArrowLeft size={14} /> Back to Dashboard
@@ -43,25 +198,147 @@ export default function CandidateDetail() {
             <div className="detail-stats">
                 <div className="stat-card">
                     <span>Score</span>
-                    <strong>{data.score != null ? `${data.score} / ${data.total}` : 'N/A'}</strong>
+                    <strong>{data.score != null ? (data.score + ' / ' + data.total) : 'N/A'}</strong>
                 </div>
                 <div className="stat-card">
                     <span>Percentage</span>
                     <strong style={{ color: data.percentage >= 50 ? '#059669' : '#dc2626' }}>
-                        {data.percentage != null ? `${data.percentage}%` : 'N/A'}
+                        {data.percentage != null ? (data.percentage + '%') : 'N/A'}
                     </strong>
                 </div>
                 <div className="stat-card">
                     <span>Tab Switches</span>
                     <strong style={{ color: data.tab_switches > 0 ? '#dc2626' : '#059669' }}>
-                        {data.tab_switches > 0 ? <><AlertTriangle size={14} /> {data.tab_switches}</> : '0 (Clean)'}
+                        {data.tab_switches > 0
+                            ? <span><AlertTriangle size={14} /> {data.tab_switches}</span>
+                            : '0 (Clean)'}
                     </strong>
                 </div>
                 <div className="stat-card">
                     <span>Submitted At</span>
-                    <strong>{data.submitted_at ? new Date(data.submitted_at).toLocaleString('en-IN') : 'Not submitted'}</strong>
+                    <strong>{fmtTime(data.submitted_at)}</strong>
                 </div>
             </div>
+
+            {/* Descriptive review status banner */}
+            {data.has_descriptive && (
+                <div className="card" style={{ marginBottom: 24, borderLeft: '4px solid ' + (isPendingReview ? '#f59e0b' : '#059669') }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <FileText size={18} color={isPendingReview ? '#f59e0b' : '#059669'} />
+                            <div>
+                                <strong style={{ fontSize: 15 }}>
+                                    {isPendingReview ? 'Descriptive Answers — Pending Review' : 'Descriptive Answers — Reviewed ✓'}
+                                </strong>
+                                <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                                    {isPendingReview
+                                        ? 'Award marks for each descriptive answer below, then click Finalize Review.'
+                                        : 'All descriptive answers have been graded. Final score is reflected above.'}
+                                </p>
+                            </div>
+                        </div>
+                        {isPendingReview && (
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleFinalizeReview}
+                                disabled={!allMarksAwarded || finalizing}
+                                title={!allMarksAwarded ? 'Award marks to all descriptive questions first' : ''}
+                            >
+                                {finalizing ? 'Finalizing…' : '✓ Finalize Review & Update Score'}
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Result Email buttons — admin only */}
+            {data.submitted_at && (
+                <div className="card" style={{ marginBottom: 24 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                        <Mail size={16} color="var(--primary)" />
+                        <strong style={{ fontSize: 15 }}>Send Result to Candidate</strong>
+                    </div>
+                    <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+                        Send an official result email to <strong>{data.email}</strong>.
+                        {data.has_descriptive && isPendingReview && (
+                            <span style={{ color: '#f59e0b' }}> Note: Descriptive review is still pending.</span>
+                        )}
+                    </p>
+                    {emailSentStatus ? (
+                        <div style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 8,
+                            padding: '10px 18px', borderRadius: 8, fontWeight: 600, fontSize: 14,
+                            background: emailSentStatus === 'selected' ? '#f0fdf4' : '#fef2f2',
+                            border: '1.5px solid ' + (emailSentStatus === 'selected' ? '#86efac' : '#fca5a5'),
+                            color: emailSentStatus === 'selected' ? '#166534' : '#991b1b',
+                        }}>
+                            {emailSentStatus === 'selected'
+                                ? <><CheckCircle size={16} /> Candidate marked as Selected — email sent</>
+                                : <><XCircle size={16} /> Candidate marked as Rejected — email sent</>
+                            }
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                            <button
+                                className="btn"
+                                style={{ background: '#059669', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 6 }}
+                                onClick={() => handleSendEmail('selected')}
+                                disabled={sendingEmail}
+                            >
+                                <CheckCircle size={15} /> Send Selected Mail
+                            </button>
+                            <button
+                                className="btn"
+                                style={{ background: '#dc2626', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 6 }}
+                                onClick={() => handleSendEmail('rejected')}
+                                disabled={sendingEmail}
+                            >
+                                <XCircle size={15} /> Send Rejected Mail
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Webcam Snapshots */}
+            {data.require_camera && (
+                <div className="card" style={{ marginBottom: 24 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                        <Camera size={16} color="var(--primary)" />
+                        <strong style={{ fontSize: 15 }}>Webcam Snapshots ({data.snapshots ? data.snapshots.length : 0})</strong>
+                    </div>
+                    {(!data.snapshots || data.snapshots.length === 0) ? (
+                        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No snapshots captured.</p>
+                    ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+                            {data.snapshots.map(snap => (
+                                <div key={snap.id} style={{ textAlign: 'center', cursor: 'pointer' }}
+                                    onClick={() => setLightbox({ src: 'data:image/jpeg;base64,' + snap.image_b64, label: 'Switch #' + snap.tab_switch_count + ' · ' + fmtTime(snap.captured_at) })}>
+                                    <img
+                                        src={'data:image/jpeg;base64,' + snap.image_b64}
+                                        alt={'Switch #' + snap.tab_switch_count}
+                                        style={{ width: 180, height: 135, objectFit: 'cover', borderRadius: 8, border: '2px solid #fecaca', display: 'block', transition: 'transform .15s', }}
+                                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
+                                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                                    />
+                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Switch #{snap.tab_switch_count}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtTime(snap.captured_at)}</div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Lightbox — rendered via portal to escape AdminLayout overflow stacking context */}
+            {lightbox && createPortal(
+                <LightboxViewer
+                    src={lightbox.src}
+                    label={lightbox.label}
+                    onClose={() => setLightbox(null)}
+                />,
+                document.body
+            )}
 
             {/* Answer breakdown */}
             {data.answers.length === 0 ? (
@@ -71,27 +348,104 @@ export default function CandidateDetail() {
             ) : (
                 <div className="answers-list">
                     {data.answers.map((ans, i) => {
+
+                        /* ── Descriptive answer card ── */
+                        if (ans.question_type === 'descriptive') {
+                            const currentVal = awardedMarks[ans.id] !== undefined
+                                ? awardedMarks[ans.id]
+                                : (ans.awarded_marks !== null && ans.awarded_marks !== undefined ? ans.awarded_marks : '');
+
+                            return (
+                                <div key={ans.id} className="answer-card" style={{ borderLeft: '4px solid #3b82f6' }}>
+                                    <div className="ans-header">
+                                        <span className="qnum">Q{i + 1}</span>
+                                        <p className="question-text">{ans.question}</p>
+                                        <span style={{
+                                            fontSize: 12, background: '#eff6ff', color: '#1d4ed8',
+                                            padding: '3px 8px', borderRadius: 4, whiteSpace: 'nowrap', fontWeight: 600,
+                                        }}>
+                                            Descriptive · Max {ans.question_mark}M
+                                        </span>
+                                    </div>
+
+                                    {/* Candidate's typed answer */}
+                                    <div style={{ marginTop: 12, marginBottom: 14 }}>
+                                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                            Candidate's Answer
+                                        </div>
+                                        <div style={{
+                                            background: '#f8fafc',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: 8,
+                                            padding: '12px 14px',
+                                            fontSize: 14,
+                                            lineHeight: 1.7,
+                                            color: ans.descriptive_answer ? 'var(--text)' : 'var(--text-muted)',
+                                            whiteSpace: 'pre-wrap',
+                                            minHeight: 60,
+                                        }}>
+                                            {ans.descriptive_answer || '(No answer provided)'}
+                                        </div>
+                                    </div>
+
+                                    {/* Mark awarding row */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <Star size={14} color="#f59e0b" />
+                                            <span style={{ fontSize: 13, fontWeight: 600 }}>Award Marks:</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            max={ans.question_mark}
+                                            value={currentVal}
+                                            onChange={e => setAwardedMarks(prev => ({ ...prev, [ans.id]: e.target.value }))}
+                                            style={{
+                                                width: 70, padding: '5px 8px', borderRadius: 6,
+                                                border: '1.5px solid var(--border)', fontSize: 14, textAlign: 'center',
+                                            }}
+                                            placeholder="0"
+                                        />
+                                        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>/ {ans.question_mark}</span>
+                                        <button
+                                            className="btn btn-primary btn-sm"
+                                            onClick={() => handleAwardMark(ans.id, ans.question_mark)}
+                                            disabled={!!savingMarks[ans.id]}
+                                            style={{ fontSize: 12 }}
+                                        >
+                                            {savingMarks[ans.id] ? 'Saving…' : 'Save Marks'}
+                                        </button>
+                                        {ans.awarded_marks !== null && ans.awarded_marks !== undefined && (
+                                            <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>
+                                                ✓ Saved: {ans.awarded_marks}M
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        /* ── MCQ answer card (unchanged) ── */
                         const status = !ans.selected_option ? 'skipped' : ans.is_correct ? 'correct' : 'wrong';
                         return (
-                            <div key={ans.mcq_id} className={`answer-card ${status}`}>
+                            <div key={ans.id} className={'answer-card ' + status}>
                                 <div className="ans-header">
                                     <span className="qnum">Q{i + 1}</span>
                                     <p className="question-text">{ans.question}</p>
-                                    <span className={`status-icon ${status}`}>
+                                    <span className={'status-icon ' + status}>
                                         {status === 'correct' && <CheckCircle size={18} />}
-                                        {status === 'wrong' && <XCircle size={18} />}
+                                        {status === 'wrong'   && <XCircle size={18} />}
                                         {status === 'skipped' && <Minus size={18} />}
                                     </span>
                                 </div>
-
                                 <div className="options-grid">
                                     {['a', 'b', 'c', 'd'].map(opt => {
-                                        const isCorrect = ans.correct_answer === opt;
+                                        const isCorrect  = ans.correct_answer === opt;
                                         const isSelected = ans.selected_option === opt;
                                         let cls = 'opt-row';
-                                        if (isCorrect) cls += ' opt-correct';
+                                        if (isCorrect)              cls += ' opt-correct';
                                         if (isSelected && !isCorrect) cls += ' opt-wrong';
-                                        if (isSelected && isCorrect) cls += ' opt-selected-correct';
+                                        if (isSelected && isCorrect)  cls += ' opt-selected-correct';
                                         return (
                                             <div key={opt} className={cls}>
                                                 <span className="opt-label">{opt.toUpperCase()}</span>
@@ -99,7 +453,7 @@ export default function CandidateDetail() {
                                                 <span className="opt-tags">
                                                     {isCorrect && <span className="badge badge-success">Correct</span>}
                                                     {isSelected && !isCorrect && <span className="badge badge-danger">Your Answer</span>}
-                                                    {isSelected && isCorrect && <span className="badge badge-success">Your Answer ✓</span>}
+                                                    {isSelected && isCorrect  && <span className="badge badge-success">Your Answer ✓</span>}
                                                 </span>
                                             </div>
                                         );

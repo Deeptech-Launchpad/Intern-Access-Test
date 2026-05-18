@@ -1,20 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Link2, Copy, Clock, User, Mail, CheckCircle, Briefcase, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminLayout from '../../components/AdminLayout';
+import DateTimePicker from '../../components/DateTimePicker';
 import API from '../../api';
 import './GenerateLink.css';
 
 export default function GenerateLink() {
     const [assessments, setAssessments] = useState([]);
-    const [form, setForm] = useState({ name: '', email: '', assessment_id: '', mcq_set_name: '' });
+    const [form, setForm] = useState({ name: '', email: '', assessment_id: '', mcq_set_name: '', require_camera: false, start_date: '', end_date: '' });
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
     const [loadingAssessments, setLoadingAssessments] = useState(true);
 
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+
+    const minDateTime = useMemo(() => new Date().toISOString(), []);
 
     useEffect(() => {
         API.get('/admin/assessments')
@@ -35,6 +38,16 @@ export default function GenerateLink() {
         e.preventDefault();
         if (!form.name || !form.email) { toast.error('Name and email are required'); return; }
         if (!form.assessment_id) { toast.error('Please select an assessment'); return; }
+        const now = new Date();
+        if (form.start_date && new Date(form.start_date) < now) {
+            toast.error('Opens At cannot be in the past'); return;
+        }
+        if (form.end_date && new Date(form.end_date) < now) {
+            toast.error('Closes At cannot be in the past'); return;
+        }
+        if (form.start_date && form.end_date && new Date(form.end_date) < new Date(form.start_date)) {
+            toast.error('Closes At cannot be before Opens At'); return;
+        }
         setLoading(true);
         try {
             const payload = {
@@ -42,7 +55,10 @@ export default function GenerateLink() {
                 email: form.email,
                 assessment_id: parseInt(form.assessment_id),
                 mcq_set_name: form.mcq_set_name || null,
-                years_experience: 0,  // derived on backend from assessment.experience_level
+                years_experience: 0,
+                require_camera: form.require_camera,
+                start_date: form.start_date || null,
+                end_date: form.end_date || null,
             };
             const res = await API.post('/admin/generate-link', payload);
             setResult(res.data);
@@ -157,6 +173,48 @@ export default function GenerateLink() {
                             <label><Mail size={12} style={{ marginRight: 4 }} />Email Address</label>
                             <input type="email" placeholder="e.g. john@example.com"
                                 value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+                        </div>
+
+                        {/* Access window (optional) */}
+                        <div className="form-group">
+                            <label><Clock size={12} style={{ marginRight: 4 }} />Opens At <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
+                            <DateTimePicker
+                                value={form.start_date}
+                                onChange={v => setForm({ ...form, start_date: v })}
+                                min={minDateTime}
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label><Clock size={12} style={{ marginRight: 4 }} />Closes At <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
+                            <DateTimePicker
+                                value={form.end_date}
+                                onChange={v => setForm({ ...form, end_date: v })}
+                                min={form.start_date || minDateTime}
+                            />
+                        </div>
+
+                        {/* Camera toggle */}
+                        <div className="form-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-secondary, #f9fafb)', borderRadius: 8, padding: '12px 16px' }}>
+                            <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Require Camera Access</div>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Candidate must allow webcam before starting. Snapshots taken on tab switches.</div>
+                            </div>
+                            <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 22, flexShrink: 0, marginLeft: 16, cursor: 'pointer' }}>
+                                <input type="checkbox" checked={form.require_camera}
+                                    onChange={e => setForm({ ...form, require_camera: e.target.checked })}
+                                    style={{ opacity: 0, width: 0, height: 0 }} />
+                                <span style={{
+                                    position: 'absolute', inset: 0, borderRadius: 22,
+                                    background: form.require_camera ? 'var(--primary)' : '#d1d5db',
+                                    transition: 'background 0.2s',
+                                }}>
+                                    <span style={{
+                                        position: 'absolute', top: 3, left: form.require_camera ? 21 : 3,
+                                        width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                                        transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                    }} />
+                                </span>
+                            </label>
                         </div>
 
                         <button type="submit" className="btn btn-primary btn-lg"

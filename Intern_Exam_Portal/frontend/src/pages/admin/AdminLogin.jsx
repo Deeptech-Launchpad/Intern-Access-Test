@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User } from 'lucide-react';
+import { Lock, User, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import API from '../../api';
 import './AdminLogin.css';
@@ -8,6 +8,7 @@ import './AdminLogin.css';
 export default function AdminLogin() {
     const [form, setForm] = useState({ username: '', password: '' });
     const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
@@ -76,11 +77,18 @@ export default function AdminLogin() {
                             <div className="input-icon-wrap">
                                 <Lock size={16} className="input-icon" />
                                 <input
-                                    type="password"
+                                    type={showPassword ? 'text' : 'password'}
                                     placeholder="Enter password"
                                     value={form.password}
                                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                                 />
+                                <button 
+                                    type="button" 
+                                    className="toggle-password-btn"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                >
+                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
                             </div>
                         </div>
 

@@ -18,12 +18,14 @@ class Token(BaseModel):
 class CreateAdminRequest(BaseModel):
     username: str
     password: str
+    email: Optional[str] = None
 
 
 class AdminOut(BaseModel):
     id: int
     username: str
     is_active: bool = True
+    email: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -34,11 +36,11 @@ class AdminOut(BaseModel):
 class AssessmentCreate(BaseModel):
     title: str
     job_position: str
-    experience_level: str  # 'fresher' | 'experienced'
+    experience_level: str
+    duration_minutes: int = 60
 
 
 class MCQSetInfo(BaseModel):
-    """Summary of one named question set within an assessment."""
     set_name: str
     count: int
 
@@ -48,7 +50,10 @@ class AssessmentOut(BaseModel):
     title: str
     job_position: str
     experience_level: str
+    duration_minutes: int = 60
     created_at: datetime
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     mcq_count: int = 0
     mcq_sets: List[MCQSetInfo] = []
 
@@ -60,11 +65,13 @@ class AssessmentOut(BaseModel):
 
 class MCQBase(BaseModel):
     question: str
-    option_a: str
-    option_b: str
-    option_c: str
-    option_d: str
-    correct_answer: str
+    question_type: str = "mcq"
+    option_a: Optional[str] = None
+    option_b: Optional[str] = None
+    option_c: Optional[str] = None
+    option_d: Optional[str] = None
+    correct_answer: Optional[str] = None
+    question_mark: Optional[int] = None
 
 
 class MCQOut(MCQBase):
@@ -78,13 +85,14 @@ class MCQOut(MCQBase):
 
 
 class MCQForCandidate(BaseModel):
-    """MCQ shown to candidate — NO correct answer exposed."""
     id: int
     question: str
-    option_a: str
-    option_b: str
-    option_c: str
-    option_d: str
+    question_type: str = "mcq"
+    option_a: Optional[str] = None
+    option_b: Optional[str] = None
+    option_c: Optional[str] = None
+    option_d: Optional[str] = None
+    question_mark: Optional[int] = None   # shown to candidate so they know the weight
 
     class Config:
         from_attributes = True
@@ -96,8 +104,11 @@ class GenerateLinkRequest(BaseModel):
     name: str
     email: EmailStr
     assessment_id: int
-    mcq_set_name: Optional[str] = None   # which question set to assign; None = all in assessment
+    mcq_set_name: Optional[str] = None
     years_experience: int = 0
+    require_camera: bool = False
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
 
 
 class GenerateLinkResponse(BaseModel):
@@ -111,6 +122,7 @@ class GenerateLinkResponse(BaseModel):
     assessment_title: str = ""
     experience_level: str = ""
     mcq_set_name: Optional[str] = None
+    require_camera: bool = False
 
 
 class CandidateSummary(BaseModel):
@@ -145,12 +157,16 @@ class VerifyEmailResponse(BaseModel):
     session_id: int
     questions: List[MCQForCandidate]
     question_order: List[int]
+    duration_minutes: int = 60
+    elapsed_seconds: int = 0
+    require_camera: bool = False
 
 
 class SaveAnswerRequest(BaseModel):
     session_id: int
     mcq_id: int
-    selected_option: str  # 'a', 'b', 'c', 'd'
+    selected_option: Optional[str] = None         # for MCQ
+    descriptive_answer: Optional[str] = None      # for descriptive
 
 
 class SubmitTestRequest(BaseModel):
@@ -161,25 +177,59 @@ class SubmitTestResponse(BaseModel):
     score: int
     total: int
     percentage: float
+    has_descriptive: bool = False   # tells frontend if review is pending
 
 
 class TabSwitchRequest(BaseModel):
     session_id: int
-    url: Optional[str] = None  # the URL/tab title the user switched to
+    url: Optional[str] = None
+
+
+class WebcamSnapshotRequest(BaseModel):
+    candidate_id: int
+    tab_switch_count: int
+    image_b64: str
+
+
+# ─── Descriptive Grading ─────────────────────────────────────────────────────
+
+class AwardMarksRequest(BaseModel):
+    answer_id: int
+    awarded_marks: int
+
+
+class SendResultEmailRequest(BaseModel):
+    candidate_id: int
+    decision: str   # 'selected' | 'rejected'
 
 
 # ─── Detailed View ────────────────────────────────────────────────────────────
 
 class AnswerDetail(BaseModel):
+    id: int
     mcq_id: int
     question: str
-    option_a: str
-    option_b: str
-    option_c: str
-    option_d: str
-    correct_answer: str
-    selected_option: Optional[str]
-    is_correct: bool
+    question_type: str = "mcq"
+    option_a: Optional[str] = None
+    option_b: Optional[str] = None
+    option_c: Optional[str] = None
+    option_d: Optional[str] = None
+    correct_answer: Optional[str] = None
+    selected_option: Optional[str] = None
+    descriptive_answer: Optional[str] = None
+    awarded_marks: Optional[int] = None
+    question_mark: Optional[int] = None
+    is_correct: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class SnapshotOut(BaseModel):
+    id: int
+    tab_switch_count: int
+    image_b64: str
+    captured_at: datetime
 
     class Config:
         from_attributes = True
@@ -195,6 +245,13 @@ class CandidateDetailResponse(BaseModel):
     tab_switches: int
     submitted_at: Optional[datetime]
     answers: List[AnswerDetail]
+    snapshots: List[SnapshotOut] = []
     job_position: Optional[str] = None
     assessment_title: Optional[str] = None
     experience_level: Optional[str] = None
+    require_camera: bool = False
+    descriptive_status: Optional[str] = None   # 'pending_review' | 'reviewed' | None
+    has_descriptive: bool = False
+
+    class Config:
+        from_attributes = True
