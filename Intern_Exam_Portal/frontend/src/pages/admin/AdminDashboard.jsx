@@ -94,12 +94,12 @@ export default function AdminDashboard() {
                         MCQ Question Row
                     </div>
                     <div className="column-tags">
-                        {['question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer', 'question_mark (blank)'].map(col => (
-                            <code key={col} style={col.includes('blank') ? { opacity: 0.5 } : {}}>{col}</code>
+                        {['subject (optional)', 'question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer', 'question_mark (blank)'].map(col => (
+                            <code key={col} style={col.includes('blank') || col.includes('optional') ? { opacity: 0.55 } : {}}>{col}</code>
                         ))}
                     </div>
                     <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
-                        Fill all options and set <code>correct_answer</code> to <code>a</code>, <code>b</code>, <code>c</code>, or <code>d</code>. Leave <code>question_mark</code> blank.
+                        Fill all options and set <code>correct_answer</code> to <code>a</code>, <code>b</code>, <code>c</code>, or <code>d</code>. Leave <code>question_mark</code> blank. <code>subject</code> is optional (e.g. <code>Python</code>, <code>SQL</code>) — blank rows fall under <code>General</code>.
                     </p>
                 </div>
 
@@ -109,12 +109,12 @@ export default function AdminDashboard() {
                         Descriptive Question Row
                     </div>
                     <div className="column-tags">
-                        {['question', 'option_a (blank)', 'option_b (blank)', 'option_c (blank)', 'option_d (blank)', 'correct_answer (blank)', 'question_mark'].map(col => (
-                            <code key={col} style={col.includes('blank') ? { opacity: 0.5 } : { background: '#fffbeb', color: '#92400e', borderColor: '#fcd34d' }}>{col}</code>
+                        {['subject (optional)', 'question', 'option_a (blank)', 'option_b (blank)', 'option_c (blank)', 'option_d (blank)', 'correct_answer (blank)', 'question_mark'].map(col => (
+                            <code key={col} style={col.includes('blank') || col.includes('optional') ? { opacity: 0.55 } : { background: '#fffbeb', color: '#92400e', borderColor: '#fcd34d' }}>{col}</code>
                         ))}
                     </div>
                     <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
-                        Leave options and <code>correct_answer</code> blank. Set <code>question_mark</code> to <code>2M</code>, <code>5M</code>, or <code>10M</code>. Admin will grade these manually.
+                        Leave options and <code>correct_answer</code> blank. Set <code>question_mark</code> to <code>2M</code>, <code>5M</code>, or <code>10M</code>. Admin will grade these manually. <code>subject</code> is optional and shared with MCQ rows.
                     </p>
                 </div>
 

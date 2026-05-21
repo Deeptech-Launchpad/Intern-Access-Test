@@ -66,6 +66,7 @@ class AssessmentOut(BaseModel):
 class MCQBase(BaseModel):
     question: str
     question_type: str = "mcq"
+    subject: Optional[str] = None
     option_a: Optional[str] = None
     option_b: Optional[str] = None
     option_c: Optional[str] = None
@@ -235,6 +236,13 @@ class SnapshotOut(BaseModel):
         from_attributes = True
 
 
+class SubjectScore(BaseModel):
+    subject: str
+    max_score: int
+    score_obtained: int
+    percentage: float
+
+
 class CandidateDetailResponse(BaseModel):
     id: int
     name: str
@@ -246,6 +254,7 @@ class CandidateDetailResponse(BaseModel):
     submitted_at: Optional[datetime]
     answers: List[AnswerDetail]
     snapshots: List[SnapshotOut] = []
+    subject_wise_scores: List[SubjectScore] = []
     job_position: Optional[str] = None
     assessment_title: Optional[str] = None
     experience_level: Optional[str] = None

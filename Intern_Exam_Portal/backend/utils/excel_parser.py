@@ -28,6 +28,7 @@ def parse_mcq_excel(file_bytes: bytes) -> List[Dict]:
         raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
 
     has_mark_col = "question_mark" in df.columns
+    has_subject_col = "subject" in df.columns
 
     questions = []
     for i, row in df.iterrows():
@@ -45,11 +46,19 @@ def parse_mcq_excel(file_bytes: bytes) -> List[Dict]:
             if raw_mark in ("2M", "5M", "10M"):
                 question_mark = int(raw_mark.replace("M", ""))
 
+        # Parse subject (optional; case-insensitive, stored Title Case; blank → "General")
+        subject = "General"
+        if has_subject_col:
+            raw_subject = str(row.get("subject", "")).strip()
+            if raw_subject and raw_subject.lower() != "nan":
+                subject = raw_subject.title()
+
         # Determine question type
         if question_mark is not None and correct_answer_empty:
             # Descriptive question
             questions.append({
                 "question_type": "descriptive",
+                "subject": subject,
                 "question": question_text,
                 "option_a": None,
                 "option_b": None,
@@ -74,6 +83,7 @@ def parse_mcq_excel(file_bytes: bytes) -> List[Dict]:
                 raise ValueError(f"Row {i + 2}: All four options (A-D) are required for MCQ questions.")
             questions.append({
                 "question_type": "mcq",
+                "subject": subject,
                 "question": question_text,
                 "option_a": opt_a,
                 "option_b": opt_b,

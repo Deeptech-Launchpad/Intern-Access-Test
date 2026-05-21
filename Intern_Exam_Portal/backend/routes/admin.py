@@ -308,6 +308,7 @@ def get_candidate_detail(candidate_id: int, db: Session = Depends(get_db),
             id=candidate.id, name=candidate.name, email=candidate.email,
             score=None, total=None, percentage=None, tab_switches=0,
             submitted_at=None, answers=[], snapshots=[],
+            subject_wise_scores=[],
             job_position=assessment.job_position if assessment else None,
             assessment_title=assessment.title if assessment else None,
             experience_level=exp_level,
@@ -317,8 +318,9 @@ def get_candidate_detail(candidate_id: int, db: Session = Depends(get_db),
         )
 
     percentage = round((session.score / session.total) * 100, 2) if session.total else None
-    from utils.grading import has_descriptive_questions
+    from utils.grading import has_descriptive_questions, calculate_subject_wise_scores
     has_desc = has_descriptive_questions(session)
+    subject_wise = calculate_subject_wise_scores(session)
     answers_detail = []
     for ans in session.answers:
         if ans.mcq.question_type == "descriptive":
@@ -356,6 +358,7 @@ def get_candidate_detail(candidate_id: int, db: Session = Depends(get_db),
         tab_switches=session.tab_switches, submitted_at=session.submitted_at,
         answers=answers_detail,
         snapshots=snapshots,
+        subject_wise_scores=subject_wise,
         job_position=assessment.job_position if assessment else None,
         assessment_title=assessment.title if assessment else None,
         experience_level=exp_level,
@@ -409,6 +412,7 @@ def duplicate_assessment(
         db.add(models.MCQ(
             assessment_id=new_assessment.id,
             set_name=mcq.set_name,
+            subject=mcq.subject,
             question=mcq.question,
             option_a=mcq.option_a,
             option_b=mcq.option_b,

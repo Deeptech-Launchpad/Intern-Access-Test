@@ -42,6 +42,7 @@ class MCQ(Base):
     id = Column(Integer, primary_key=True, index=True)
     assessment_id = Column(Integer, ForeignKey("assessments.id"), nullable=True, index=True)
     set_name = Column(String, nullable=False, default="Default Set")
+    subject = Column(String, nullable=True)                         # optional grouping
     question_type = Column(String, nullable=False, default="mcq")   # 'mcq' | 'descriptive'
     question = Column(Text, nullable=False)
     option_a = Column(String, nullable=True)

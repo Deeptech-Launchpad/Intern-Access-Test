@@ -194,112 +194,6 @@ export default function CandidateDetail() {
                 <p>{data.email}</p>
             </div>
 
-            {/* Summary cards */}
-            <div className="detail-stats">
-                <div className="stat-card">
-                    <span>Score</span>
-                    <strong>{data.score != null ? (data.score + ' / ' + data.total) : 'N/A'}</strong>
-                </div>
-                <div className="stat-card">
-                    <span>Percentage</span>
-                    <strong style={{ color: data.percentage >= 50 ? '#059669' : '#dc2626' }}>
-                        {data.percentage != null ? (data.percentage + '%') : 'N/A'}
-                    </strong>
-                </div>
-                <div className="stat-card">
-                    <span>Tab Switches</span>
-                    <strong style={{ color: data.tab_switches > 0 ? '#dc2626' : '#059669' }}>
-                        {data.tab_switches > 0
-                            ? <span><AlertTriangle size={14} /> {data.tab_switches}</span>
-                            : '0 (Clean)'}
-                    </strong>
-                </div>
-                <div className="stat-card">
-                    <span>Submitted At</span>
-                    <strong>{fmtTime(data.submitted_at)}</strong>
-                </div>
-            </div>
-
-            {/* Descriptive review status banner */}
-            {data.has_descriptive && (
-                <div className="card" style={{ marginBottom: 24, borderLeft: '4px solid ' + (isPendingReview ? '#f59e0b' : '#059669') }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <FileText size={18} color={isPendingReview ? '#f59e0b' : '#059669'} />
-                            <div>
-                                <strong style={{ fontSize: 15 }}>
-                                    {isPendingReview ? 'Descriptive Answers — Pending Review' : 'Descriptive Answers — Reviewed ✓'}
-                                </strong>
-                                <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                                    {isPendingReview
-                                        ? 'Award marks for each descriptive answer below, then click Finalize Review.'
-                                        : 'All descriptive answers have been graded. Final score is reflected above.'}
-                                </p>
-                            </div>
-                        </div>
-                        {isPendingReview && (
-                            <button
-                                className="btn btn-primary"
-                                onClick={handleFinalizeReview}
-                                disabled={!allMarksAwarded || finalizing}
-                                title={!allMarksAwarded ? 'Award marks to all descriptive questions first' : ''}
-                            >
-                                {finalizing ? 'Finalizing…' : '✓ Finalize Review & Update Score'}
-                            </button>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Result Email buttons — admin only */}
-            {data.submitted_at && (
-                <div className="card" style={{ marginBottom: 24 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                        <Mail size={16} color="var(--primary)" />
-                        <strong style={{ fontSize: 15 }}>Send Result to Candidate</strong>
-                    </div>
-                    <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-                        Send an official result email to <strong>{data.email}</strong>.
-                        {data.has_descriptive && isPendingReview && (
-                            <span style={{ color: '#f59e0b' }}> Note: Descriptive review is still pending.</span>
-                        )}
-                    </p>
-                    {emailSentStatus ? (
-                        <div style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 8,
-                            padding: '10px 18px', borderRadius: 8, fontWeight: 600, fontSize: 14,
-                            background: emailSentStatus === 'selected' ? '#f0fdf4' : '#fef2f2',
-                            border: '1.5px solid ' + (emailSentStatus === 'selected' ? '#86efac' : '#fca5a5'),
-                            color: emailSentStatus === 'selected' ? '#166534' : '#991b1b',
-                        }}>
-                            {emailSentStatus === 'selected'
-                                ? <><CheckCircle size={16} /> Candidate marked as Selected — email sent</>
-                                : <><XCircle size={16} /> Candidate marked as Rejected — email sent</>
-                            }
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                            <button
-                                className="btn"
-                                style={{ background: '#059669', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 6 }}
-                                onClick={() => handleSendEmail('selected')}
-                                disabled={sendingEmail}
-                            >
-                                <CheckCircle size={15} /> Send Selected Mail
-                            </button>
-                            <button
-                                className="btn"
-                                style={{ background: '#dc2626', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 6 }}
-                                onClick={() => handleSendEmail('rejected')}
-                                disabled={sendingEmail}
-                            >
-                                <XCircle size={15} /> Send Rejected Mail
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
-
             {/* Webcam Snapshots */}
             {data.require_camera && (
                 <div className="card" style={{ marginBottom: 24 }}>
@@ -462,6 +356,162 @@ export default function CandidateDetail() {
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Subject-Wise Score breakdown — shown below answers */}
+            {data.subject_wise_scores && data.subject_wise_scores.length > 0 && (
+                <div className="card" style={{ marginTop: 24, padding: 0, overflow: 'hidden' }}>
+                    <div style={{
+                        padding: '14px 20px',
+                        borderBottom: '1px solid var(--border, #e5e7eb)',
+                        background: '#f9fafb',
+                    }}>
+                        <strong style={{ fontSize: 12, letterSpacing: '0.08em', color: 'var(--text-muted, #6b7280)' }}>
+                            SUBJECT-WISE SCORE
+                        </strong>
+                        {data.has_descriptive && data.descriptive_status === 'pending_review' && (
+                            <span style={{ marginLeft: 12, fontSize: 11, color: '#d97706', fontWeight: 600 }}>
+                                (MCQ-only — finalize descriptive review to include descriptive marks)
+                            </span>
+                        )}
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                        <thead>
+                            <tr style={{ background: '#f9fafb' }}>
+                                <th style={{ textAlign: 'left',  padding: '12px 20px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted, #6b7280)', letterSpacing: '0.06em', borderBottom: '1px solid var(--border, #e5e7eb)' }}>SUBJECT</th>
+                                <th style={{ textAlign: 'right', padding: '12px 20px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted, #6b7280)', letterSpacing: '0.06em', borderBottom: '1px solid var(--border, #e5e7eb)' }}>MAX. SCORE</th>
+                                <th style={{ textAlign: 'right', padding: '12px 20px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted, #6b7280)', letterSpacing: '0.06em', borderBottom: '1px solid var(--border, #e5e7eb)' }}>SCORE OBTAINED</th>
+                                <th style={{ textAlign: 'right', padding: '12px 20px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted, #6b7280)', letterSpacing: '0.06em', borderBottom: '1px solid var(--border, #e5e7eb)' }}>%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {data.subject_wise_scores.map((s, idx) => {
+                                const pctColor = s.percentage >= 80 ? '#059669'
+                                               : s.percentage >= 60 ? '#d97706'
+                                               : '#dc2626';
+                                const isLast = idx === data.subject_wise_scores.length - 1;
+                                return (
+                                    <tr key={s.subject}>
+                                        <td style={{ padding: '14px 20px', borderBottom: isLast ? 'none' : '1px solid var(--border, #f3f4f6)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: pctColor, display: 'inline-block', flexShrink: 0 }} />
+                                            <strong style={{ fontWeight: 700, color: 'var(--text, #111827)' }}>{s.subject}</strong>
+                                        </td>
+                                        <td style={{ padding: '14px 20px', borderBottom: isLast ? 'none' : '1px solid var(--border, #f3f4f6)', textAlign: 'right', color: 'var(--text-muted, #6b7280)' }}>{s.max_score}</td>
+                                        <td style={{ padding: '14px 20px', borderBottom: isLast ? 'none' : '1px solid var(--border, #f3f4f6)', textAlign: 'right', fontWeight: 700 }}>{s.score_obtained}</td>
+                                        <td style={{ padding: '14px 20px', borderBottom: isLast ? 'none' : '1px solid var(--border, #f3f4f6)', textAlign: 'right', fontWeight: 700, color: pctColor }}>{s.percentage}%</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Summary cards — moved below subject score so the admin sees updated totals
+                right where they clicked Finalize, no scroll-up needed */}
+            <div className="detail-stats" style={{ marginTop: 24 }}>
+                <div className="stat-card">
+                    <span>Score</span>
+                    <strong>{data.score != null ? (data.score + ' / ' + data.total) : 'N/A'}</strong>
+                </div>
+                <div className="stat-card">
+                    <span>Percentage</span>
+                    <strong style={{ color: data.percentage >= 50 ? '#059669' : '#dc2626' }}>
+                        {data.percentage != null ? (data.percentage + '%') : 'N/A'}
+                    </strong>
+                </div>
+                <div className="stat-card">
+                    <span>Tab Switches</span>
+                    <strong style={{ color: data.tab_switches > 0 ? '#dc2626' : '#059669' }}>
+                        {data.tab_switches > 0
+                            ? <span><AlertTriangle size={14} /> {data.tab_switches}</span>
+                            : '0 (Clean)'}
+                    </strong>
+                </div>
+                <div className="stat-card">
+                    <span>Submitted At</span>
+                    <strong>{fmtTime(data.submitted_at)}</strong>
+                </div>
+            </div>
+
+            {/* Descriptive review status banner — placed AFTER subject score table */}
+            {data.has_descriptive && (
+                <div className="card" style={{ marginTop: 24, marginBottom: 24, borderLeft: '4px solid ' + (isPendingReview ? '#f59e0b' : '#059669') }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <FileText size={18} color={isPendingReview ? '#f59e0b' : '#059669'} />
+                            <div>
+                                <strong style={{ fontSize: 15 }}>
+                                    {isPendingReview ? 'Descriptive Answers — Pending Review' : 'Descriptive Answers — Reviewed ✓'}
+                                </strong>
+                                <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                                    {isPendingReview
+                                        ? 'Award marks for each descriptive answer above, then click Finalize Review.'
+                                        : 'All descriptive answers have been graded. Final score is reflected above.'}
+                                </p>
+                            </div>
+                        </div>
+                        {isPendingReview && (
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleFinalizeReview}
+                                disabled={!allMarksAwarded || finalizing}
+                                title={!allMarksAwarded ? 'Award marks to all descriptive questions first' : ''}
+                            >
+                                {finalizing ? 'Finalizing…' : '✓ Finalize Review & Update Score'}
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Result Email buttons — admin only — placed AFTER subject score table */}
+            {data.submitted_at && (
+                <div className="card" style={{ marginBottom: 24 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                        <Mail size={16} color="var(--primary)" />
+                        <strong style={{ fontSize: 15 }}>Send Result to Candidate</strong>
+                    </div>
+                    <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+                        Send an official result email to <strong>{data.email}</strong>.
+                        {data.has_descriptive && isPendingReview && (
+                            <span style={{ color: '#f59e0b' }}> Note: Descriptive review is still pending.</span>
+                        )}
+                    </p>
+                    {emailSentStatus ? (
+                        <div style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 8,
+                            padding: '10px 18px', borderRadius: 8, fontWeight: 600, fontSize: 14,
+                            background: emailSentStatus === 'selected' ? '#f0fdf4' : '#fef2f2',
+                            border: '1.5px solid ' + (emailSentStatus === 'selected' ? '#86efac' : '#fca5a5'),
+                            color: emailSentStatus === 'selected' ? '#166534' : '#991b1b',
+                        }}>
+                            {emailSentStatus === 'selected'
+                                ? <><CheckCircle size={16} /> Candidate marked as Selected — email sent</>
+                                : <><XCircle size={16} /> Candidate marked as Rejected — email sent</>
+                            }
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                            <button
+                                className="btn"
+                                style={{ background: '#059669', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 6 }}
+                                onClick={() => handleSendEmail('selected')}
+                                disabled={sendingEmail}
+                            >
+                                <CheckCircle size={15} /> Send Selected Mail
+                            </button>
+                            <button
+                                className="btn"
+                                style={{ background: '#dc2626', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 6 }}
+                                onClick={() => handleSendEmail('rejected')}
+                                disabled={sendingEmail}
+                            >
+                                <XCircle size={15} /> Send Rejected Mail
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </AdminLayout>
