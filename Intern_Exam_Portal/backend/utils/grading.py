@@ -53,6 +53,54 @@ def has_descriptive_questions(session: models.TestSession) -> bool:
     )
 
 
+MAX_TAB_SWITCHES = 3  # mirrors routes/candidate.py
+
+
+def calculate_trust_score(session: models.TestSession, candidate: models.Candidate, snapshot_count: int) -> tuple[int, List[str]]:
+    """
+    Composite "Trust Score" 0-100 reflecting how clean the candidate's test-taking
+    behavior was. Returns (score, list of human-readable factors that lowered it).
+
+    Formula:
+      Start at 100.
+      - 25 per tab switch
+      - 15 extra if auto-submitted at MAX_TAB_SWITCHES
+      - 10 if test finished in less than 25% of allowed time (suspiciously fast)
+      - 10 if camera was required but no snapshots were captured
+      Floor at 0.
+    """
+    score = 100
+    factors: List[str] = []
+
+    switches = session.tab_switches or 0
+    if switches > 0:
+        deduction = 25 * switches
+        score -= deduction
+        factors.append(f"{switches} tab switch{'es' if switches != 1 else ''}: -{deduction}")
+
+    if switches >= MAX_TAB_SWITCHES:
+        score -= 15
+        factors.append("Auto-submitted at tab-switch limit: -15")
+
+    # Suspiciously fast completion
+    if session.started_at and session.submitted_at:
+        time_taken = (session.submitted_at - session.started_at).total_seconds()
+        allowed_min = 60
+        if candidate.assessment and candidate.assessment.duration_minutes:
+            allowed_min = candidate.assessment.duration_minutes
+        allowed_sec = allowed_min * 60
+        if allowed_sec > 0 and time_taken < 0.25 * allowed_sec:
+            score -= 10
+            factors.append("Completed in <25% of allowed time: -10")
+
+    # Webcam expected but missing
+    if candidate.require_camera and snapshot_count == 0:
+        score -= 10
+        factors.append("Camera required but no snapshots captured: -10")
+
+    return max(0, score), factors
+
+
 def calculate_subject_wise_scores(session: models.TestSession) -> List[dict]:
     """
     Group this session's answers by MCQ subject and compute per-subject totals.

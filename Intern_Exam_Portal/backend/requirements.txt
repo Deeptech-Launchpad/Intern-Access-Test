@@ -12,3 +12,4 @@ bcrypt==4.0.1
 apscheduler==3.10.4
 psycopg2-binary==2.9.9
 xlrd==2.0.2
+reportlab==4.2.5

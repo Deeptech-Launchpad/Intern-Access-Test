@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel, EmailStr
 
 
@@ -199,6 +199,11 @@ class AwardMarksRequest(BaseModel):
     awarded_marks: int
 
 
+class FinalizeDescriptiveRequest(BaseModel):
+    # Map of answer_id -> awarded marks. Saved before computing the final total.
+    marks: Dict[int, int] = {}
+
+
 class SendResultEmailRequest(BaseModel):
     candidate_id: int
     decision: str   # 'selected' | 'rejected'
@@ -252,6 +257,11 @@ class CandidateDetailResponse(BaseModel):
     percentage: Optional[float]
     tab_switches: int
     submitted_at: Optional[datetime]
+    started_at: Optional[datetime] = None
+    time_taken_seconds: Optional[int] = None
+    duration_minutes: Optional[int] = None
+    trust_score: Optional[int] = None
+    trust_factors: List[str] = []
     answers: List[AnswerDetail]
     snapshots: List[SnapshotOut] = []
     subject_wise_scores: List[SubjectScore] = []

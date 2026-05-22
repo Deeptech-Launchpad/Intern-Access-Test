@@ -315,12 +315,21 @@ def get_candidate_detail(candidate_id: int, db: Session = Depends(get_db),
             require_camera=candidate.require_camera,
             descriptive_status=None,
             has_descriptive=False,
+            duration_minutes=assessment.duration_minutes if assessment else None,
         )
 
     percentage = round((session.score / session.total) * 100, 2) if session.total else None
-    from utils.grading import has_descriptive_questions, calculate_subject_wise_scores
+    from utils.grading import has_descriptive_questions, calculate_subject_wise_scores, calculate_trust_score
     has_desc = has_descriptive_questions(session)
     subject_wise = calculate_subject_wise_scores(session)
+
+    # Time taken + trust score
+    snapshot_count = len(candidate.snapshots) if candidate.snapshots else 0
+    time_taken_seconds = None
+    if session.started_at and session.submitted_at:
+        time_taken_seconds = int((session.submitted_at - session.started_at).total_seconds())
+    duration_minutes = assessment.duration_minutes if assessment else None
+    trust_score, trust_factors = calculate_trust_score(session, candidate, snapshot_count)
     answers_detail = []
     for ans in session.answers:
         if ans.mcq.question_type == "descriptive":
@@ -356,6 +365,11 @@ def get_candidate_detail(candidate_id: int, db: Session = Depends(get_db),
         id=candidate.id, name=candidate.name, email=candidate.email,
         score=session.score, total=session.total, percentage=percentage,
         tab_switches=session.tab_switches, submitted_at=session.submitted_at,
+        started_at=session.started_at,
+        time_taken_seconds=time_taken_seconds,
+        duration_minutes=duration_minutes,
+        trust_score=trust_score,
+        trust_factors=trust_factors,
         answers=answers_detail,
         snapshots=snapshots,
         subject_wise_scores=subject_wise,
@@ -743,10 +757,16 @@ def send_result_email(
 @router.post("/finalize-descriptive-by-candidate/{candidate_id}")
 def finalize_descriptive_by_candidate(
     candidate_id: int,
+    req: schemas.FinalizeDescriptiveRequest = schemas.FinalizeDescriptiveRequest(),
     db: Session = Depends(get_db),
     current_admin: models.Admin = Depends(auth.get_current_admin),
 ):
-    """Finalize descriptive review using candidate_id (convenience wrapper)."""
+    """
+    Finalize descriptive review. Optionally accepts a `marks` map
+    ({answer_id: awarded_value}) which is saved before the total is computed.
+    This lets the admin grade + finalize in a single click without separately
+    calling /admin/award-marks per answer.
+    """
     from utils.grading import calculate_total_score
     candidate = db.query(models.Candidate).filter(models.Candidate.id == candidate_id).first()
     if not candidate:
@@ -754,6 +774,26 @@ def finalize_descriptive_by_candidate(
     session = candidate.session
     if not session:
         raise HTTPException(status_code=404, detail="No test session found for this candidate")
+
+    # Save any marks passed in the request, validating each
+    if req.marks:
+        for answer_id_str, mark_value in req.marks.items():
+            answer = db.query(models.Answer).filter(
+                models.Answer.id == int(answer_id_str),
+                models.Answer.session_id == session.id,
+            ).first()
+            if not answer:
+                raise HTTPException(status_code=404, detail=f"Answer {answer_id_str} not found in this session")
+            if not answer.mcq or answer.mcq.question_type != "descriptive":
+                raise HTTPException(status_code=400, detail=f"Answer {answer_id_str} is not descriptive")
+            max_mark = answer.mcq.question_mark or 0
+            if mark_value < 0 or mark_value > max_mark:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Answer {answer_id_str}: marks must be between 0 and {max_mark}"
+                )
+            answer.awarded_marks = mark_value
+        db.flush()
 
     earned, possible = calculate_total_score(session)
     session.score = earned
@@ -768,3 +808,163 @@ def finalize_descriptive_by_candidate(
         "total": possible,
         "percentage": percentage,
     }
+
+
+# ─── PDF Export ───────────────────────────────────────────────────────────────
+
+@router.get("/candidate/{candidate_id}/export-pdf")
+def export_candidate_pdf(
+    candidate_id: int,
+    db: Session = Depends(get_db),
+    current_admin: models.Admin = Depends(auth.get_current_admin),
+):
+    """Generate a one-page result PDF: header + overall + subject-wise breakdown."""
+    from io import BytesIO
+    from datetime import timezone, timedelta
+    from fastapi.responses import StreamingResponse
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+    from utils.grading import (
+        calculate_subject_wise_scores,
+        calculate_trust_score,
+        has_descriptive_questions,
+    )
+
+    candidate = db.query(models.Candidate).filter(models.Candidate.id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    session = candidate.session
+    if not session or not session.is_submitted:
+        raise HTTPException(status_code=400, detail="Candidate has not submitted the test yet")
+
+    assessment = candidate.assessment
+    subject_wise = calculate_subject_wise_scores(session)
+    snapshot_count = len(candidate.snapshots) if candidate.snapshots else 0
+    trust_score, _ = calculate_trust_score(session, candidate, snapshot_count)
+
+    percentage = round((session.score / session.total) * 100, 2) if session.total else 0.0
+    time_taken_min = "—"
+    if session.started_at and session.submitted_at:
+        secs = int((session.submitted_at - session.started_at).total_seconds())
+        time_taken_min = f"{secs // 60} min"
+    duration_str = f"{assessment.duration_minutes} min" if assessment and assessment.duration_minutes else "—"
+
+    IST = timezone(timedelta(hours=5, minutes=30))
+    submitted_str = "—"
+    if session.submitted_at:
+        submitted_str = session.submitted_at.replace(tzinfo=timezone.utc).astimezone(IST).strftime("%d %b %Y, %I:%M %p IST")
+
+    # ── Build the PDF ─────────────────────────────────────────────────────────
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+                            leftMargin=1.5 * cm, rightMargin=1.5 * cm)
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle("Title", parent=styles["Heading1"], fontSize=20, alignment=TA_LEFT,
+                                  textColor=colors.HexColor("#1A56DB"), spaceAfter=6)
+    subtitle_style = ParagraphStyle("Sub", parent=styles["Normal"], fontSize=10,
+                                     textColor=colors.HexColor("#6b7280"), spaceAfter=18)
+    section_style = ParagraphStyle("Section", parent=styles["Heading2"], fontSize=11,
+                                    textColor=colors.HexColor("#6b7280"), spaceBefore=14, spaceAfter=6,
+                                    leading=14)
+    big_score_style = ParagraphStyle("Big", parent=styles["Heading1"], fontSize=24,
+                                      textColor=colors.HexColor("#111827"), alignment=TA_LEFT, spaceAfter=4)
+
+    elements = []
+    elements.append(Paragraph("InternAssess — Candidate Result Report", title_style))
+    elements.append(Paragraph(f"Generated {datetime.utcnow().replace(tzinfo=timezone.utc).astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')}", subtitle_style))
+
+    # Candidate info table
+    info_rows = [
+        ["Candidate", candidate.name],
+        ["Email", candidate.email],
+        ["Assessment", assessment.title if assessment else "—"],
+        ["Job Position", assessment.job_position if assessment else "—"],
+        ["Submitted At", submitted_str],
+        ["Time Taken", f"{time_taken_min} / {duration_str}"],
+        ["Trust Score", f"{trust_score} / 100"],
+    ]
+    info_table = Table(info_rows, colWidths=[4 * cm, 12 * cm])
+    info_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#6b7280")),
+        ("TEXTCOLOR", (1, 0), (1, -1), colors.HexColor("#111827")),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.HexColor("#f3f4f6")),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 0.6 * cm))
+
+    # Overall score block
+    elements.append(Paragraph("OVERALL SCORE", section_style))
+    score_text = f"{session.score} / {session.total}  &nbsp;&nbsp; ({percentage}%)"
+    pct_color = "#059669" if percentage >= 60 else "#dc2626"
+    score_para = Paragraph(
+        f'<font color="{pct_color}">{score_text}</font>',
+        big_score_style,
+    )
+    elements.append(score_para)
+
+    if has_descriptive_questions(session) and session.descriptive_status != "reviewed":
+        elements.append(Paragraph(
+            '<font color="#d97706" size="9">Descriptive review pending — score reflects MCQ only.</font>',
+            styles["Normal"]
+        ))
+    elements.append(Spacer(1, 0.4 * cm))
+
+    # Subject-wise table
+    elements.append(Paragraph("SUBJECT-WISE SCORE", section_style))
+    if subject_wise:
+        subj_rows = [["Subject", "Max Score", "Score Obtained", "%"]]
+        for s in subject_wise:
+            subj_rows.append([s["subject"], str(s["max_score"]), str(s["score_obtained"]), f"{s['percentage']}%"])
+        subj_table = Table(subj_rows, colWidths=[6 * cm, 3 * cm, 4 * cm, 3 * cm])
+        ts = TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1A56DB")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#e5e7eb")),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ])
+        # Color percentage column based on threshold
+        for i, s in enumerate(subject_wise, start=1):
+            pct = s["percentage"]
+            color = colors.HexColor("#059669") if pct >= 80 else colors.HexColor("#d97706") if pct >= 60 else colors.HexColor("#dc2626")
+            ts.add("TEXTCOLOR", (3, i), (3, i), color)
+            ts.add("FONTNAME", (3, i), (3, i), "Helvetica-Bold")
+        subj_table.setStyle(ts)
+        elements.append(subj_table)
+    else:
+        elements.append(Paragraph("No subject-wise data available.", styles["Normal"]))
+
+    elements.append(Spacer(1, 1 * cm))
+    footer_style = ParagraphStyle("Footer", parent=styles["Normal"], fontSize=8,
+                                   textColor=colors.HexColor("#9ca3af"), alignment=TA_CENTER)
+    elements.append(Paragraph("Generated by InternAssess Portal · Confidential", footer_style))
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in candidate.name).strip().replace(" ", "_")
+    filename = f"{safe_name}_result.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, XCircle, AlertTriangle, Minus, Camera, FileText, Mail, Star } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, AlertTriangle, Minus, Camera, FileText, Mail, Star, Clock, ShieldCheck, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminLayout from '../../components/AdminLayout';
 import API from '../../api';
@@ -81,13 +81,13 @@ export default function CandidateDetail() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [awardedMarks, setAwardedMarks] = useState({});
-    const [savingMarks, setSavingMarks] = useState({});
     const [finalizing, setFinalizing] = useState(false);
     const [sendingEmail, setSendingEmail] = useState(false);
     const [emailSentStatus, setEmailSentStatus] = useState(() => {
         return localStorage.getItem('result_decision_' + id) || null;
     });
     const [lightbox, setLightbox] = useState(null); // { src, label }
+    const [exporting, setExporting] = useState(false);
 
     const reload = () => {
         setLoading(true);
@@ -130,27 +130,29 @@ export default function CandidateDetail() {
     const allMarksAwarded = descriptiveAnswers.length > 0 &&
         descriptiveAnswers.every(a => awardedMarks[a.id] !== undefined && awardedMarks[a.id] !== '');
 
-    const handleAwardMark = async (answerId, maxMark) => {
-        const val = parseInt(awardedMarks[answerId], 10);
-        if (isNaN(val) || val < 0 || val > maxMark) {
-            toast.error('Marks must be between 0 and ' + maxMark);
-            return;
-        }
-        setSavingMarks(prev => ({ ...prev, [answerId]: true }));
-        try {
-            await API.post('/admin/award-marks', { answer_id: answerId, awarded_marks: val });
-            toast.success('Marks saved');
-        } catch (e) {
-            toast.error((e.response && e.response.data && e.response.data.detail) || 'Failed to save marks');
-        } finally {
-            setSavingMarks(prev => ({ ...prev, [answerId]: false }));
-        }
-    };
-
     const handleFinalizeReview = async () => {
+        // Validate every descriptive answer has a value in range before sending.
+        // Blank = "not graded" — admin must explicitly type a value (0 is valid).
+        const marks = {};
+        let qNum = 0;
+        for (const ans of (data?.answers || [])) {
+            qNum += 1;
+            if (ans.question_type !== 'descriptive') continue;
+            const raw = awardedMarks[ans.id];
+            if (raw === undefined || raw === '' || raw === null) {
+                toast.error(`Q${qNum} is not graded yet — enter a mark (0 means awarded 0)`);
+                return;
+            }
+            const val = parseInt(raw, 10);
+            if (isNaN(val) || val < 0 || val > ans.question_mark) {
+                toast.error(`Q${qNum}: marks must be between 0 and ${ans.question_mark}`);
+                return;
+            }
+            marks[ans.id] = val;
+        }
         setFinalizing(true);
         try {
-            const res = await API.post('/admin/finalize-descriptive-by-candidate/' + id);
+            const res = await API.post('/admin/finalize-descriptive-by-candidate/' + id, { marks });
             toast.success(
                 'Review finalized! Final score: ' + res.data.score + '/' + res.data.total +
                 ' (' + res.data.percentage + '%)'
@@ -160,6 +162,29 @@ export default function CandidateDetail() {
             toast.error((e.response && e.response.data && e.response.data.detail) || 'Failed to finalize review');
         } finally {
             setFinalizing(false);
+        }
+    };
+
+    const handleExportPDF = async () => {
+        setExporting(true);
+        try {
+            const res = await API.get('/admin/candidate/' + id + '/export-pdf', { responseType: 'blob' });
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const safe = (data?.name || 'candidate').replace(/[^a-z0-9 _-]/gi, '_').replace(/\s+/g, '_');
+            a.download = safe + '_result.pdf';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success('PDF downloaded');
+        } catch (e) {
+            const detail = e.response && e.response.data && e.response.data.detail;
+            toast.error(detail || 'Failed to export PDF');
+        } finally {
+            setExporting(false);
         }
     };
 
@@ -186,12 +211,26 @@ export default function CandidateDetail() {
 
     return (
         <AdminLayout>
-            <div className="page-header">
+            <div className="page-header" style={{ position: 'relative' }}>
                 <button className="btn btn-ghost btn-sm" onClick={() => navigate('/admin/grades')} style={{ marginBottom: 12 }}>
                     <ArrowLeft size={14} /> Back to Dashboard
                 </button>
-                <h1>{data.name}</h1>
-                <p>{data.email}</p>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                    <div>
+                        <h1>{data.name}</h1>
+                        <p>{data.email}</p>
+                    </div>
+                    {data.submitted_at && (
+                        <button
+                            className="btn btn-primary"
+                            onClick={handleExportPDF}
+                            disabled={exporting}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+                        >
+                            <Download size={14} /> {exporting ? 'Generating…' : 'Export as PDF'}
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Webcam Snapshots */}
@@ -282,7 +321,8 @@ export default function CandidateDetail() {
                                         </div>
                                     </div>
 
-                                    {/* Mark awarding row */}
+                                    {/* Mark awarding row — single input; click "Save & Finalize" at the bottom to persist.
+                                        Empty input means "not graded yet" — distinct from typing 0 (which means "graded as 0"). */}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <Star size={14} color="#f59e0b" />
@@ -297,21 +337,18 @@ export default function CandidateDetail() {
                                             style={{
                                                 width: 70, padding: '5px 8px', borderRadius: 6,
                                                 border: '1.5px solid var(--border)', fontSize: 14, textAlign: 'center',
+                                                fontStyle: currentVal === '' ? 'italic' : 'normal',
                                             }}
-                                            placeholder="0"
+                                            placeholder="—"
                                         />
                                         <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>/ {ans.question_mark}</span>
-                                        <button
-                                            className="btn btn-primary btn-sm"
-                                            onClick={() => handleAwardMark(ans.id, ans.question_mark)}
-                                            disabled={!!savingMarks[ans.id]}
-                                            style={{ fontSize: 12 }}
-                                        >
-                                            {savingMarks[ans.id] ? 'Saving…' : 'Save Marks'}
-                                        </button>
-                                        {ans.awarded_marks !== null && ans.awarded_marks !== undefined && (
+                                        {ans.awarded_marks !== null && ans.awarded_marks !== undefined ? (
                                             <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>
-                                                ✓ Saved: {ans.awarded_marks}M
+                                                ✓ Last saved: {ans.awarded_marks}M
+                                            </span>
+                                        ) : (
+                                            <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic', fontWeight: 500 }}>
+                                                Not graded yet
                                             </span>
                                         )}
                                     </div>
@@ -409,7 +446,7 @@ export default function CandidateDetail() {
             )}
 
             {/* Summary cards — moved below subject score so the admin sees updated totals
-                right where they clicked Finalize, no scroll-up needed */}
+                right where they clicked Save & Update Score, no scroll-up needed */}
             <div className="detail-stats" style={{ marginTop: 24 }}>
                 <div className="stat-card">
                     <span>Score</span>
@@ -422,16 +459,39 @@ export default function CandidateDetail() {
                     </strong>
                 </div>
                 <div className="stat-card">
-                    <span>Tab Switches</span>
-                    <strong style={{ color: data.tab_switches > 0 ? '#dc2626' : '#059669' }}>
-                        {data.tab_switches > 0
-                            ? <span><AlertTriangle size={14} /> {data.tab_switches}</span>
-                            : '0 (Clean)'}
+                    <span><ShieldCheck size={12} style={{ marginRight: 4 }} />Trust Score</span>
+                    <strong style={{
+                        color: data.trust_score == null ? '#6b7280'
+                              : data.trust_score >= 75 ? '#059669'
+                              : data.trust_score >= 50 ? '#d97706'
+                              : '#dc2626'
+                    }}>
+                        {data.trust_score != null ? data.trust_score + ' / 100' : 'N/A'}
                     </strong>
+                    {data.trust_factors && data.trust_factors.length > 0 && (
+                        <span style={{ fontSize: 11, color: 'var(--text-muted, #6b7280)', marginTop: 4, lineHeight: 1.3 }}>
+                            {data.trust_factors.join(' · ')}
+                        </span>
+                    )}
+                    {data.trust_score === 100 && (
+                        <span style={{ fontSize: 11, color: '#059669', marginTop: 4 }}>
+                            Clean — no flags
+                        </span>
+                    )}
                 </div>
                 <div className="stat-card">
-                    <span>Submitted At</span>
-                    <strong>{fmtTime(data.submitted_at)}</strong>
+                    <span><Clock size={12} style={{ marginRight: 4 }} />Time Taken</span>
+                    <strong style={{ color: 'var(--text, #111827)' }}>
+                        {data.time_taken_seconds != null
+                            ? Math.floor(data.time_taken_seconds / 60) + ' min'
+                            : 'N/A'
+                        }
+                        {data.duration_minutes != null && (
+                            <span style={{ color: 'var(--text-muted, #6b7280)', fontWeight: 500 }}>
+                                {' / ' + data.duration_minutes + ' min'}
+                            </span>
+                        )}
+                    </strong>
                 </div>
             </div>
 
@@ -447,7 +507,7 @@ export default function CandidateDetail() {
                                 </strong>
                                 <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '2px 0 0' }}>
                                     {isPendingReview
-                                        ? 'Award marks for each descriptive answer above, then click Finalize Review.'
+                                        ? 'Enter marks in each descriptive answer above, then click Save and Update Score. Both happen in one click.'
                                         : 'All descriptive answers have been graded. Final score is reflected above.'}
                                 </p>
                             </div>
@@ -459,7 +519,7 @@ export default function CandidateDetail() {
                                 disabled={!allMarksAwarded || finalizing}
                                 title={!allMarksAwarded ? 'Award marks to all descriptive questions first' : ''}
                             >
-                                {finalizing ? 'Finalizing…' : '✓ Finalize Review & Update Score'}
+                                {finalizing ? 'Saving…' : '✓ Save and Update Score'}
                             </button>
                         )}
                     </div>
